@@ -4,7 +4,7 @@ const dns = require("dns");
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 const app = require("./src/app.js")
 const connectToDB = require("./src/config/database.js")
-
+const PORT = process.env.PORT || 3000
 connectToDB()
     .then(() => {
         app.listen(3000, () => {
