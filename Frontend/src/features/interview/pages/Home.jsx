@@ -1,48 +1,56 @@
-import  { useState, useRef } from 'react'
+import { useState, useRef } from 'react'
 import "../style/home.scss"
 import { useInterview } from '../hooks/useInterview.js'
 import { useNavigate } from 'react-router'
+import { useAuth } from '../../auth/hooks/useAuth.js'
 
 const Home = () => {
-
-    const { loading, generateReport,reports } = useInterview()
-    const [ jobDescription, setJobDescription ] = useState("")
-    const [ selfDescription, setSelfDescription ] = useState("")
+    const { loading, generateReport, reports } = useInterview()
+    const { user, handleLogout } = useAuth()
+    const [jobDescription, setJobDescription] = useState("")
+    const [selfDescription, setSelfDescription] = useState("")
+    const [error, setError] = useState("")
+    const [charCount, setCharCount] = useState(0)
     const resumeInputRef = useRef()
-
+    const [selectedFileName, setSelectedFileName] = useState("")
     const navigate = useNavigate()
 
-const handleGenerateReport = async () => {
+    const handleGenerateReport = async () => {
+        setError("")
+        const resumeFile = resumeInputRef.current?.files?.[0]
 
-    const resumeFile = resumeInputRef.current?.files?.[0]
+        if (!jobDescription.trim()) {
+            setError("Job Description is required to generate a plan.")
+            return
+        }
+        if (!resumeFile && !selfDescription.trim()) {
+            setError("Please provide either a Resume or a Self Description.")
+            return
+        }
 
-    if (!jobDescription.trim()) {
-        alert("Job Description is required")
-        return
+        try {
+            const data = await generateReport({ jobDescription, selfDescription, resumeFile })
+            if (!data) {
+                setError("Failed to generate report. Please check your inputs and try again.")
+                return
+            }
+            navigate(`/interview/${data._id}`)
+        } catch (err) {
+            setError(err?.response?.data?.message || "Something went wrong. Please try again.")
+        }
     }
 
-    if (!resumeFile && !selfDescription.trim()) {
-        alert("Please provide either Resume or Self Description")
-        return
+    const handleLogoutClick = async () => {
+        await handleLogout()
+        navigate("/login")
     }
-
-    const data = await generateReport({
-        jobDescription,
-        selfDescription,
-        resumeFile
-    })
-
-    if (!data) {
-        return
-    }
-
-    navigate(`/interview/${data._id}`)
-}
 
     if (loading) {
         return (
             <main className='loading-screen'>
-                <h1>Loading your interview plan...</h1>
+                <div className='loading-spinner' />
+                <h1>Generating your interview plan...</h1>
+                <p>This may take up to 30 seconds</p>
             </main>
         )
     }
@@ -50,11 +58,34 @@ const handleGenerateReport = async () => {
     return (
         <div className='home-page'>
 
+            {/* Top Bar */}
+            <div className='top-bar'>
+                <span className='top-bar__brand'>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" /></svg>
+                    InterviewAI
+                </span>
+                <div className='top-bar__right'>
+                    {user && <span className='top-bar__user'>Hi, {user.username}</span>}
+                    <button className='logout-btn' onClick={handleLogoutClick}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                        Logout
+                    </button>
+                </div>
+            </div>
+
             {/* Page Header */}
             <header className='page-header'>
                 <h1>Create Your Custom <span className='highlight'>Interview Plan</span></h1>
                 <p>Let our AI analyze the job requirements and your unique profile to build a winning strategy.</p>
             </header>
+
+            {/* Error Banner */}
+            {error && (
+                <div className='error-banner'>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    {error}
+                </div>
+            )}
 
             {/* Main Card */}
             <div className='interview-card'>
@@ -70,12 +101,12 @@ const handleGenerateReport = async () => {
                             <span className='badge badge--required'>Required</span>
                         </div>
                         <textarea
-                            onChange={(e) => { setJobDescription(e.target.value) }}
+                            onChange={(e) => { setJobDescription(e.target.value); setCharCount(e.target.value.length) }}
                             className='panel__textarea'
-                            placeholder={`Paste the full job description here...\ne.g. 'Senior Frontend Engineer at Google requires proficiency in React, TypeScript, and large-scale system design...'`}
+                            placeholder={`Paste the full job description here...\ne.g. 'Senior Frontend Engineer at Google requires proficiency in React, TypeScript...'`}
                             maxLength={5000}
                         />
-                        <div className='char-counter'>0 / 5000 chars</div>
+                        <div className='char-counter'>{charCount} / 5000</div>
                     </div>
 
                     {/* Vertical Divider */}
@@ -96,13 +127,26 @@ const handleGenerateReport = async () => {
                                 Upload Resume
                                 <span className='badge badge--best'>Best Results</span>
                             </label>
-                            <label className='dropzone' htmlFor='resume'>
+                            <label className={`dropzone ${selectedFileName ? 'dropzone--selected' : ''}`} htmlFor='resume'>
                                 <span className='dropzone__icon'>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 16 12 12 8 16" /><line x1="12" y1="12" x2="12" y2="21" /><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" /></svg>
+                                    {selectedFileName
+                                        ? <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                        : <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 16 12 12 8 16" /><line x1="12" y1="12" x2="12" y2="21" /><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" /></svg>
+                                    }
                                 </span>
-                                <p className='dropzone__title'>Click to upload or drag &amp; drop</p>
+                                <p className='dropzone__title'>
+                                    {selectedFileName || "Click to upload or drag & drop"}
+                                </p>
                                 <p className='dropzone__subtitle'>PDF or DOCX (Max 5MB)</p>
-                                <input ref={resumeInputRef} hidden type='file' id='resume' name='resume' accept='.pdf,.docx' />
+                                <input
+                                    ref={resumeInputRef}
+                                    hidden
+                                    type='file'
+                                    id='resume'
+                                    name='resume'
+                                    accept='.pdf,.docx'
+                                    onChange={(e) => setSelectedFileName(e.target.files?.[0]?.name || "")}
+                                />
                             </label>
                         </div>
 
@@ -113,11 +157,11 @@ const handleGenerateReport = async () => {
                         <div className='self-description'>
                             <label className='section-label' htmlFor='selfDescription'>Quick Self-Description</label>
                             <textarea
-                                onChange={(e) => { setSelfDescription(e.target.value) }}
+                                onChange={(e) => setSelfDescription(e.target.value)}
                                 id='selfDescription'
                                 name='selfDescription'
                                 className='panel__textarea panel__textarea--short'
-                                placeholder="Briefly describe your experience, key skills, and years of experience if you don't have a resume handy..."
+                                placeholder="Briefly describe your experience and key skills if you don't have a resume..."
                             />
                         </div>
 
@@ -126,7 +170,7 @@ const handleGenerateReport = async () => {
                             <span className='info-box__icon'>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" stroke="#1a1f27" strokeWidth="2" /><line x1="12" y1="16" x2="12.01" y2="16" stroke="#1a1f27" strokeWidth="2" /></svg>
                             </span>
-                            <p>Either a <strong>Resume</strong> or a <strong>Self Description</strong> is required to generate a personalized plan.</p>
+                            <p>Either a <strong>Resume</strong> or a <strong>Self Description</strong> is required.</p>
                         </div>
                     </div>
                 </div>
@@ -134,17 +178,15 @@ const handleGenerateReport = async () => {
                 {/* Card Footer */}
                 <div className='interview-card__footer'>
                     <span className='footer-info'>AI-Powered Strategy Generation &bull; Approx 30s</span>
-                    <button
-                        onClick={handleGenerateReport}
-                        className='generate-btn'>
+                    <button onClick={handleGenerateReport} className='generate-btn'>
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" /></svg>
                         Generate My Interview Strategy
                     </button>
                 </div>
             </div>
 
-            {/* Recent Reports List */}
-            {reports?.length > 0 &&  (
+            {/* Recent Reports */}
+            {reports?.length > 0 && (
                 <section className='recent-reports'>
                     <h2>My Recent Interview Plans</h2>
                     <ul className='reports-list'>
@@ -152,7 +194,9 @@ const handleGenerateReport = async () => {
                             <li key={report._id} className='report-item' onClick={() => navigate(`/interview/${report._id}`)}>
                                 <h3>{report.title || 'Untitled Position'}</h3>
                                 <p className='report-meta'>Generated on {new Date(report.createdAt).toLocaleDateString()}</p>
-                                <p className={`match-score ${report.matchScore >= 80 ? 'score--high' : report.matchScore >= 60 ? 'score--mid' : 'score--low'}`}>Match Score: {report.matchScore}%</p>
+                                <p className={`match-score ${report.matchScore >= 80 ? 'score--high' : report.matchScore >= 60 ? 'score--mid' : 'score--low'}`}>
+                                    Match Score: {report.matchScore}%
+                                </p>
                             </li>
                         ))}
                     </ul>
